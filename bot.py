@@ -57,69 +57,51 @@ Available Commands:
         return (user_id == Config.OWNER_ID or 
                 user_id in Config.AUTHORIZED_CHATS)
     
-    def run(self):
-        """Run both web server and telegram bot"""
-        import asyncio
+    async def start_services(self):
+        """Start both web server and telegram bot"""
+        # Create web app for health check
+        app = web.Application()
+        app.router.add_get('/', self.health_check)
         
-        async def start_services():
-            # Create web app for health check
-            app = web.Application()
-            app.router.add_get('/', self.health_check)
-            
-            # Create telegram bot application
-            application = Application.builder().token(Config.BOT_TOKEN).build()
-            
-            # Add handlers
-            application.add_handler(CommandHandler('start', self.start))
-            application.add_handler(CommandHandler('help', self.help))
-            application.add_handler(CommandHandler('us', self.merge_handler.settings))
-            application.add_handler(CommandHandler('merge', self.merge_handler.merge))
-            application.add_handler(CommandHandler('cancel', self.merge_handler.cancel))
-            application.add_handler(CommandHandler('restart', self.restart))
-            
-            # Drive link handler
-            application.add_handler(MessageHandler(
-                filters.TEXT & ~filters.COMMAND, 
-                self.merge_handler.handle_drive_link
-            ))
-            
-            # Callback queries
-            application.add_handler(CallbackQueryHandler(self.merge_handler.button))
-            
-            # Handle document uploads (for token.pickle)
-            application.add_handler(MessageHandler(
-                filters.Document.ALL & ~filters.COMMAND,
-                self.merge_handler.handle_token_pickle
-            ))
-            
-            # Start bot
-            create_directories()
-            
-            # Start web server
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
-            await site.start()
-            
-            # Start bot
-            await application.initialize()
+        # Create telegram bot application
+        application = Application.builder().token(Config.BOT_TOKEN).build()
+        
+        # Add handlers
+        application.add_handler(CommandHandler('start', self.start))
+        application.add_handler(CommandHandler('help', self.help))
+        application.add_handler(CommandHandler('us', self.merge_handler.settings))
+        application.add_handler(CommandHandler('merge', self.merge_handler.merge))
+        application.add_handler(CommandHandler('cancel', self.merge_handler.cancel))
+        application.add_handler(CommandHandler('restart', self.restart))
+        
+        # Drive link handler
+        application.add_handler(MessageHandler(
+            filters.TEXT & ~filters.COMMAND, 
+            self.merge_handler.handle_drive_link
+        ))
+        
+        # Callback queries
+        application.add_handler(CallbackQueryHandler(self.merge_handler.button))
+        
+        # Handle document uploads (for token.pickle)
+        application.add_handler(MessageHandler(
+            filters.Document.ALL & ~filters.COMMAND,
+            self.merge_handler.handle_token_pickle
+        ))
+        
+        # Start bot
+        create_directories()
+        
+        # Start web server
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
+        await site.start()
+        
+        # Start bot and keep it running
+        async with application:
             await application.start()
             await application.run_polling(allowed_updates=Update.ALL_TYPES)
-            
-        # Get or create event loop
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        # Run the services
-        try:
-            loop.run_until_complete(start_services())
-        except KeyboardInterrupt:
-            pass
-        finally:
-            loop.close()
     
     async def restart(self, update, context):
         if not self.is_authorized(update):
@@ -150,5 +132,6 @@ Available Commands:
             await update.message.reply_text(f"Error during restart: {str(e)}")
 
 if __name__ == '__main__':
+    import asyncio
     bot = Bot()
-    bot.run() 
+    asyncio.run(bot.start_services()) 
