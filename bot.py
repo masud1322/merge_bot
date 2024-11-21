@@ -157,15 +157,13 @@ Available Commands:
             await self.application.initialize()
             logger.info("Bot started")
             
-            # Run polling and wait for stop event
-            while not self.stop_event.is_set():
-                try:
-                    await self.application.updater.start_polling(drop_pending_updates=True)
-                    await asyncio.sleep(1)
-                except Exception as e:
-                    if "still running" not in str(e).lower():
-                        logger.error(f"Polling error: {e}")
-                        break
+            # Run polling in a simpler way
+            async with self.application:
+                await self.application.start()
+                await self.application.updater.start_polling(drop_pending_updates=True)
+                
+                # Keep the bot running
+                while not self.stop_event.is_set():
                     await asyncio.sleep(1)
                     
         except Exception as e:
