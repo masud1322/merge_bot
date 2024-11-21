@@ -1,6 +1,8 @@
 import logging
 import os
+from aiohttp import web
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+from telegram import Update
 from config import Config
 from handlers.drive_handler import DriveHandler
 from handlers.merge_handler import MergeHandler
@@ -19,6 +21,10 @@ class Bot:
         self.db = MongoDB()
         self.drive_handler = DriveHandler(self.db)
         self.merge_handler = MergeHandler(self.drive_handler, self.db)
+        
+    async def health_check(self, request):
+        """Health check endpoint"""
+        return web.Response(text="OK", status=200)
         
     async def start(self, update, context):
         if not self.is_authorized(update):
@@ -52,6 +58,11 @@ Available Commands:
                 user_id in Config.AUTHORIZED_CHATS)
     
     def run(self):
+        # Create web app for health check
+        app = web.Application()
+        app.router.add_get('/', self.health_check)
+        
+        # Create telegram bot application
         application = Application.builder().token(Config.BOT_TOKEN).build()
         
         # Add handlers
@@ -80,11 +91,23 @@ Available Commands:
         # Start bot
         create_directories()
         
-        # Run the bot without health check
+        # Run both servers
         import asyncio
-        asyncio.run(application.initialize())
-        asyncio.run(application.start())
-        asyncio.run(application.run_polling(allowed_updates=Update.ALL_TYPES))
+        
+        async def start_servers():
+            # Start web server
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
+            await site.start()
+            
+            # Start bot
+            await application.initialize()
+            await application.start()
+            await application.run_polling(allowed_updates=Update.ALL_TYPES)
+            
+        # Run everything
+        asyncio.run(start_servers())
     
     async def restart(self, update, context):
         if not self.is_authorized(update):
