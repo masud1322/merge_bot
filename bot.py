@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 class Bot:
     def __init__(self):
         self.db = MongoDB()
-        self.drive_handler = DriveHandler()
+        self.drive_handler = DriveHandler(self.db)
         self.merge_handler = MergeHandler(self.drive_handler, self.db)
         
     async def start(self, update, context):

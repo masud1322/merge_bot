@@ -10,9 +10,10 @@ import re
 import io
 
 class DriveHandler:
-    def __init__(self):
+    def __init__(self, db):
         self.service = None
         self.folder_id = Config.DRIVE_FOLDER_ID
+        self.db = db
         self.connect()
     
     def connect(self):

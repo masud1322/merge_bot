@@ -206,3 +206,23 @@ class MergeHandler:
                 
         except Exception as e:
             await update.message.reply_text(f"Error: {str(e)}")
+
+    async def cancel(self, update, context):
+        """Cancel current operation"""
+        if not self.is_authorized(update):
+            return
+        
+        user_id = update.effective_user.id
+        
+        # Clear user files
+        if user_id in self.user_files:
+            del self.user_files[user_id]
+        
+        # Clear user data
+        if context.user_data:
+            context.user_data.clear()
+        
+        await update.message.reply_text(
+            "Current operation cancelled.\n"
+            "All selected files have been cleared."
+        )
