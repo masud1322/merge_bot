@@ -31,6 +31,7 @@ class Bot:
         self.merge_handler = MergeHandler(self.drive_handler, self.db)
         self.application = None
         self.web_app = None
+        self.stop_event = asyncio.Event()
         
     def is_authorized(self, update):
         """Check if user is authorized"""
@@ -98,82 +99,111 @@ Available Commands:
         """Health check endpoint"""
         return web.Response(text="OK", status=200)
         
-    async def setup_application(self):
-        """Setup telegram bot application"""
-        # Create application
-        self.application = Application.builder().token(Config.BOT_TOKEN).build()
-        
-        # Add handlers
-        self.application.add_handler(CommandHandler('start', self.start))
-        self.application.add_handler(CommandHandler('help', self.help))
-        self.application.add_handler(CommandHandler('us', self.merge_handler.settings))
-        self.application.add_handler(CommandHandler('merge', self.merge_handler.merge))
-        self.application.add_handler(CommandHandler('cancel', self.merge_handler.cancel))
-        self.application.add_handler(CommandHandler('restart', self.restart))
-        
-        # Drive link handler
-        self.application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            self.merge_handler.handle_drive_link
-        ))
-        
-        # Callback queries
-        self.application.add_handler(CallbackQueryHandler(self.merge_handler.button))
-        
-        # Handle document uploads (for token.pickle)
-        self.application.add_handler(MessageHandler(
-            filters.Document.ALL & ~filters.COMMAND,
-            self.merge_handler.handle_token_pickle
-        ))
-        
-    async def setup_webapp(self):
-        """Setup web application"""
-        self.web_app = web.Application()
-        self.web_app.router.add_get('/', self.health_check)
-        
-    async def run(self):
-        """Run both web server and telegram bot"""
+    async def run_web_server(self):
+        """Run web server"""
         try:
-            # Setup applications
-            await self.setup_application()
-            await self.setup_webapp()
+            self.web_app = web.Application()
+            self.web_app.router.add_get('/', self.health_check)
             
-            # Create directories
-            create_directories()
-            
-            # Start web server
             runner = web.AppRunner(self.web_app)
             await runner.setup()
             site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
             await site.start()
+            
             logger.info("Web server started")
+            
+            # Keep running until stop event is set
+            await self.stop_event.wait()
+            
+            # Cleanup
+            await runner.cleanup()
+            
+        except Exception as e:
+            logger.error(f"Web server error: {e}")
+            self.stop_event.set()
+            
+    async def run_bot(self):
+        """Run telegram bot"""
+        try:
+            # Create application
+            self.application = Application.builder().token(Config.BOT_TOKEN).build()
+            
+            # Add handlers
+            self.application.add_handler(CommandHandler('start', self.start))
+            self.application.add_handler(CommandHandler('help', self.help))
+            self.application.add_handler(CommandHandler('us', self.merge_handler.settings))
+            self.application.add_handler(CommandHandler('merge', self.merge_handler.merge))
+            self.application.add_handler(CommandHandler('cancel', self.merge_handler.cancel))
+            self.application.add_handler(CommandHandler('restart', self.restart))
+            
+            # Drive link handler
+            self.application.add_handler(MessageHandler(
+                filters.TEXT & ~filters.COMMAND,
+                self.merge_handler.handle_drive_link
+            ))
+            
+            # Callback queries
+            self.application.add_handler(CallbackQueryHandler(self.merge_handler.button))
+            
+            # Handle document uploads (for token.pickle)
+            self.application.add_handler(MessageHandler(
+                filters.Document.ALL & ~filters.COMMAND,
+                self.merge_handler.handle_token_pickle
+            ))
+            
+            create_directories()
             
             # Start bot
             await self.application.initialize()
             await self.application.start()
             logger.info("Bot started")
             
-            # Run bot forever
-            await self.application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True
-            )
+            # Run until stop event is set
+            while not self.stop_event.is_set():
+                try:
+                    await self.application.updater.start_polling()
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    logger.error(f"Polling error: {e}")
+                    if "Event loop is closed" in str(e):
+                        break
+            
+            # Cleanup
+            await self.application.stop()
+            await self.application.shutdown()
             
         except Exception as e:
-            logger.error(f"Error running bot: {e}")
+            logger.error(f"Bot error: {e}")
+            self.stop_event.set()
             
+    async def run(self):
+        """Run both web server and telegram bot"""
+        try:
+            # Run both services concurrently
+            await asyncio.gather(
+                self.run_web_server(),
+                self.run_bot()
+            )
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
         finally:
-            # Cleanup
-            if self.application:
-                await self.application.stop()
-                await self.application.shutdown()
-            if runner:
-                await runner.cleanup()
+            # Ensure stop event is set
+            self.stop_event.set()
 
 def main():
     """Main function"""
     bot = Bot()
-    asyncio.run(bot.run())
+    
+    # Run the bot with proper signal handling
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        loop.run_until_complete(bot.run())
+    except KeyboardInterrupt:
+        logger.info("Received shutdown signal")
+    finally:
+        loop.close()
 
 if __name__ == '__main__':
     main() 
