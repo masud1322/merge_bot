@@ -4,6 +4,7 @@ from config import Config
 from utils.video import VideoMerger
 from utils.progress import ProgressTracker
 from utils.helper import get_readable_size
+from telegram.ext import MessageHandler, filters
 
 class MergeHandler:
     def __init__(self, drive_handler, db):
@@ -101,9 +102,18 @@ class MergeHandler:
         
         elif query.data == "update_folder":
             await query.message.edit_text(
-                "Please send me the Google Drive folder ID where files should be uploaded"
+                "Please send me the Google Drive folder ID"
             )
             context.user_data['awaiting_folder'] = True
+            
+            # Add message handler for folder ID
+            context.application.add_handler(
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    self.handle_folder_id,
+                    block=False
+                )
+            )
         
         elif query.data == "merge_done":
             if user_id not in self.user_files or not self.user_files[user_id]:
@@ -118,6 +128,26 @@ class MergeHandler:
                 del self.user_files[user_id]
             await query.message.edit_text("Operation cancelled!")
 
+    async def handle_folder_id(self, update, context):
+        """Handle folder ID input"""
+        if not self.is_authorized(update):
+            return
+            
+        folder_id = update.message.text.strip()
+        
+        if await self.drive_handler.update_folder_id(folder_id):
+            await update.message.reply_text("Drive destination updated successfully!")
+        else:
+            await update.message.reply_text("Failed to update drive destination")
+            
+        # Remove the temporary handler
+        context.application.remove_handler(
+            MessageHandler(
+                filters.TEXT & ~filters.COMMAND,
+                self.handle_folder_id
+            )
+        )
+        
     async def merge(self, update, context):
         if not self.is_authorized(update):
             return

@@ -84,13 +84,18 @@ class DriveHandler:
             return False
     
     def is_valid_drive_link(self, link):
+        """Check if link is a valid Google Drive link"""
         patterns = [
-            r'https://drive\.google\.com/file/d/(.*?)/',
-            r'https://drive\.google\.com/open\?id=(.*?)$'
+            r'https://drive\.google\.com/file/d/([\w-]+)',
+            r'https://drive\.google\.com/open\?id=([\w-]+)',
+            r'https://drive\.google\.com/uc\?id=([\w-]+)',
+            r'https://drive\.google\.com/drive/folders/([\w-]+)'
         ]
+        
         for pattern in patterns:
             if match := re.search(pattern, link):
                 return match.group(1)
+                
         return None
     
     async def get_file_info(self, link):
