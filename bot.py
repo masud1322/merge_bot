@@ -157,14 +157,20 @@ Available Commands:
             await self.application.initialize()
             logger.info("Bot started")
             
-            # Run polling in a simpler way
-            async with self.application:
-                await self.application.start()
-                await self.application.updater.start_polling(drop_pending_updates=True)
-                
-                # Keep the bot running
-                while not self.stop_event.is_set():
-                    await asyncio.sleep(1)
+            # Delete webhook to ensure no duplicate updates
+            await self.application.bot.delete_webhook()
+            
+            # Run polling with proper configuration
+            await self.application.start()
+            await self.application.updater.start_polling(
+                drop_pending_updates=True,
+                allowed_updates=Update.ALL_TYPES,
+                stop_signals=None  # Disable automatic shutdown
+            )
+            
+            # Keep the bot running
+            while not self.stop_event.is_set():
+                await asyncio.sleep(1)
                     
         except Exception as e:
             logger.error(f"Bot error: {e}")
