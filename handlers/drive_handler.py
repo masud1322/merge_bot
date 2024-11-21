@@ -6,6 +6,7 @@ from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from config import Config
+from utils.helper import get_readable_size
 import re
 import io
 
@@ -103,7 +104,7 @@ class DriveHandler:
                 'id': file['id'],
                 'name': file['name'],
                 'size': int(file['size']),
-                'readable_size': self.format_size(int(file['size'])),
+                'readable_size': get_readable_size(int(file['size'])),
                 'is_video': is_video
             }
         except Exception as e:
@@ -129,6 +130,7 @@ class DriveHandler:
             return False
             
     async def upload_file(self, file_path, progress_callback=None):
+        """Upload a file to Google Drive"""
         try:
             file_metadata = {
                 'name': os.path.basename(file_path),

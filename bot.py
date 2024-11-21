@@ -1,5 +1,6 @@
 import logging
 import os
+from aiohttp import web
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from config import Config
 from handlers.drive_handler import DriveHandler
@@ -51,7 +52,16 @@ Available Commands:
         return (user_id == Config.OWNER_ID or 
                 user_id in Config.AUTHORIZED_CHATS)
     
+    async def health_check(self, request):
+        """Simple health check endpoint"""
+        return web.Response(text="OK", status=200)
+    
     def run(self):
+        # Create web app for health check
+        app = web.Application()
+        app.router.add_get('/health', self.health_check)
+        
+        # Create telegram bot application
         application = Application.builder().token(Config.BOT_TOKEN).build()
         
         # Add handlers
@@ -77,9 +87,22 @@ Available Commands:
             self.merge_handler.handle_token_pickle
         ))
         
-        # Start bot
-        create_directories()
-        application.run_polling()
+        # Start both servers
+        async def start_servers():
+            # Start web server
+            runner = web.AppRunner(app)
+            await runner.setup()
+            site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
+            await site.start()
+            
+            # Start bot
+            await application.initialize()
+            await application.start()
+            await application.run_polling()
+        
+        # Run everything
+        import asyncio
+        asyncio.run(start_servers())
     
     async def restart(self, update, context):
         if not self.is_authorized(update):
