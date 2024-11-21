@@ -79,7 +79,12 @@ Available Commands:
         
         # Start bot
         create_directories()
-        application.run_polling()
+        
+        # Run the bot without health check
+        import asyncio
+        asyncio.run(application.initialize())
+        asyncio.run(application.start())
+        asyncio.run(application.run_polling(allowed_updates=Update.ALL_TYPES))
     
     async def restart(self, update, context):
         if not self.is_authorized(update):

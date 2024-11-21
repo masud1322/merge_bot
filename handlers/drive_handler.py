@@ -9,6 +9,7 @@ from config import Config
 from utils.helper import get_readable_size
 import re
 import io
+from bson.binary import Binary
 
 class DriveHandler:
     def __init__(self, db):
@@ -44,7 +45,9 @@ class DriveHandler:
             # Get token data from database
             settings = self.db.settings.find_one({'user_id': Config.OWNER_ID})
             if settings and settings.get('token_pickle'):
-                return pickle.loads(settings['token_pickle'])
+                # Convert Binary back to bytes
+                token_data = bytes(settings['token_pickle'])
+                return pickle.loads(token_data)
         except Exception as e:
             print(f"Error getting credentials from DB: {str(e)}")
         return None
@@ -52,9 +55,12 @@ class DriveHandler:
     async def update_token(self, token_pickle_data: bytes):
         """Update token pickle in database"""
         try:
+            # Convert bytes to Binary for MongoDB storage
+            binary_data = Binary(token_pickle_data)
+            
             # Save to database
             await self.db.update_user_settings(Config.OWNER_ID, {
-                'token_pickle': token_pickle_data
+                'token_pickle': binary_data
             })
             
             # Load new credentials
