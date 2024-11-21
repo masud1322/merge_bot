@@ -4,7 +4,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from config import Config
 import re
 import io
@@ -16,24 +16,64 @@ class DriveHandler:
         self.connect()
     
     def connect(self):
-        creds = None
-        if os.path.exists('token.pickle'):
-            with open('token.pickle', 'rb') as token:
-                creds = pickle.load(token)
-                
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    'credentials.json',
-                    ['https://www.googleapis.com/auth/drive']
-                )
-                creds = flow.run_local_server(port=0)
-            with open('token.pickle', 'wb') as token:
-                pickle.dump(creds, token)
-                
-        self.service = build('drive', 'v3', credentials=creds)
+        """Connect to Google Drive API"""
+        try:
+            # Try to get credentials from database first
+            creds = self.get_credentials_from_db()
+            
+            if not creds and os.path.exists('token.pickle'):
+                with open('token.pickle', 'rb') as token:
+                    creds = pickle.load(token)
+                    
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    # Don't try to create new credentials, wait for user to provide token.pickle
+                    return
+                    
+            self.service = build('drive', 'v3', credentials=creds)
+        except Exception as e:
+            print(f"Error connecting to Drive API: {str(e)}")
+    
+    def get_credentials_from_db(self):
+        """Get credentials from database"""
+        try:
+            # Get token data from database
+            settings = self.db.settings.find_one({'user_id': Config.OWNER_ID})
+            if settings and settings.get('token_pickle'):
+                return pickle.loads(settings['token_pickle'])
+        except Exception as e:
+            print(f"Error getting credentials from DB: {str(e)}")
+        return None
+    
+    async def update_token(self, token_pickle_data: bytes):
+        """Update token pickle in database"""
+        try:
+            # Save to database
+            await self.db.update_user_settings(Config.OWNER_ID, {
+                'token_pickle': token_pickle_data
+            })
+            
+            # Load new credentials
+            creds = pickle.loads(token_pickle_data)
+            self.service = build('drive', 'v3', credentials=creds)
+            return True
+        except Exception as e:
+            print(f"Error updating token: {str(e)}")
+            return False
+    
+    async def update_folder_id(self, folder_id: str):
+        """Update destination folder ID"""
+        try:
+            self.folder_id = folder_id
+            await self.db.update_user_settings(Config.OWNER_ID, {
+                'drive_folder': folder_id
+            })
+            return True
+        except Exception as e:
+            print(f"Error updating folder ID: {str(e)}")
+            return False
     
     def is_valid_drive_link(self, link):
         patterns = [

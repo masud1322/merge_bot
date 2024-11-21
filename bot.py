@@ -1,4 +1,5 @@
 import logging
+import os
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 from config import Config
 from handlers.drive_handler import DriveHandler
@@ -41,6 +42,7 @@ Available Commands:
 /us - Update settings (token.pickle or drive destination)
 /merge - Start merging selected videos
 /cancel - Cancel current operation
+/restart - Restart the bot
 """
         await update.message.reply_text(help_text)
     
@@ -58,6 +60,7 @@ Available Commands:
         application.add_handler(CommandHandler('us', self.merge_handler.settings))
         application.add_handler(CommandHandler('merge', self.merge_handler.merge))
         application.add_handler(CommandHandler('cancel', self.merge_handler.cancel))
+        application.add_handler(CommandHandler('restart', self.restart))
         
         # Drive link handler
         application.add_handler(MessageHandler(
@@ -68,9 +71,43 @@ Available Commands:
         # Callback queries
         application.add_handler(CallbackQueryHandler(self.merge_handler.button))
         
+        # Handle document uploads (for token.pickle)
+        application.add_handler(MessageHandler(
+            filters.Document.ALL & ~filters.COMMAND,
+            self.merge_handler.handle_token_pickle
+        ))
+        
         # Start bot
         create_directories()
         application.run_polling()
+    
+    async def restart(self, update, context):
+        if not self.is_authorized(update):
+            return
+        
+        await update.message.reply_text("Restarting bot...")
+        
+        # Cleanup
+        try:
+            # Clear downloads directory
+            for file in os.listdir(Config.DOWNLOAD_DIR):
+                file_path = os.path.join(Config.DOWNLOAD_DIR, file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                except Exception as e:
+                    print(f"Error deleting {file_path}: {e}")
+                
+            # Clear user files dictionary
+            self.merge_handler.user_files.clear()
+            
+            # Reconnect to Drive API
+            self.drive_handler.connect()
+            
+            await update.message.reply_text("Bot restarted successfully!")
+            
+        except Exception as e:
+            await update.message.reply_text(f"Error during restart: {str(e)}")
 
 if __name__ == '__main__':
     bot = Bot()

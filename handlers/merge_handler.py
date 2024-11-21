@@ -184,3 +184,25 @@ class MergeHandler:
             # Cleanup
             if user_id in self.user_files:
                 del self.user_files[user_id]
+
+    async def handle_token_pickle(self, update, context):
+        """Handle uploaded token.pickle file"""
+        if not update.message.document:
+            await update.message.reply_text("Please send the token.pickle file")
+            return
+        
+        if update.message.document.file_name != "token.pickle":
+            await update.message.reply_text("Please send a valid token.pickle file")
+            return
+        
+        try:
+            file = await context.bot.get_file(update.message.document.file_id)
+            token_data = await file.download_as_bytearray()
+            
+            if await self.drive_handler.update_token(token_data):
+                await update.message.reply_text("Token updated successfully!")
+            else:
+                await update.message.reply_text("Failed to update token")
+                
+        except Exception as e:
+            await update.message.reply_text(f"Error: {str(e)}")

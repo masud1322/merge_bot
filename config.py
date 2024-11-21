@@ -5,6 +5,9 @@ class Config:
     OWNER_ID = int(os.environ.get('OWNER_ID', ''))
     AUTHORIZED_CHATS = set(int(x) for x in os.environ.get("AUTHORIZED_CHATS", "").split())
     
+    # Port configuration
+    PORT = int(os.environ.get('PORT', '8080'))
+    
     # MongoDB
     DATABASE_URL = "mongodb+srv://mezbahasan07:HMhhlK9HBybT2km6@cluster0.f03zw.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
     
