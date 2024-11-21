@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: video-merger-bot
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: OWNER_ID
+        sync: false
+      - key: AUTHORIZED_CHATS
+        sync: false 
