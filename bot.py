@@ -98,11 +98,28 @@ Available Commands:
         site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
         await site.start()
         
-        # Start bot and keep it running
-        async with application:
-            await application.start()
-            await application.run_polling(allowed_updates=Update.ALL_TYPES)
-    
+        logger.info("Web server started")
+        
+        # Initialize bot
+        await application.initialize()
+        await application.start()
+        logger.info("Bot started")
+        
+        try:
+            # Run the bot forever
+            await application.run_polling(
+                allowed_updates=Update.ALL_TYPES,
+                drop_pending_updates=True,
+                close_loop=False
+            )
+        except Exception as e:
+            logger.error(f"Error in bot: {e}")
+        finally:
+            # Cleanup
+            await runner.cleanup()
+            await application.stop()
+            await application.shutdown()
+
     async def restart(self, update, context):
         if not self.is_authorized(update):
             return
@@ -131,7 +148,18 @@ Available Commands:
         except Exception as e:
             await update.message.reply_text(f"Error during restart: {str(e)}")
 
-if __name__ == '__main__':
+def run_bot():
+    """Run the bot"""
     import asyncio
+    
+    # Create bot instance
     bot = Bot()
-    asyncio.run(bot.start_services()) 
+    
+    # Run the bot
+    try:
+        asyncio.run(bot.start_services())
+    except KeyboardInterrupt:
+        pass
+
+if __name__ == '__main__':
+    run_bot() 
