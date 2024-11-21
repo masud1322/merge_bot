@@ -57,7 +57,7 @@ Available Commands:
         return (user_id == Config.OWNER_ID or 
                 user_id in Config.AUTHORIZED_CHATS)
     
-    def run(self):
+    async def run(self):
         # Create web app for health check
         app = web.Application()
         app.router.add_get('/', self.health_check)
@@ -91,23 +91,21 @@ Available Commands:
         # Start bot
         create_directories()
         
-        # Run both servers
-        import asyncio
+        # Start web server
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
+        await site.start()
         
-        async def start_servers():
-            # Start web server
-            runner = web.AppRunner(app)
-            await runner.setup()
-            site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
-            await site.start()
-            
-            # Start bot
-            await application.initialize()
-            await application.start()
+        # Start bot
+        await application.initialize()
+        await application.start()
+        
+        try:
             await application.run_polling(allowed_updates=Update.ALL_TYPES)
-            
-        # Run everything
-        asyncio.run(start_servers())
+        finally:
+            await application.stop()
+            await runner.cleanup()
     
     async def restart(self, update, context):
         if not self.is_authorized(update):
@@ -138,5 +136,16 @@ Available Commands:
             await update.message.reply_text(f"Error during restart: {str(e)}")
 
 if __name__ == '__main__':
-    bot = Bot()
-    bot.run() 
+    import asyncio
+    
+    # Create and run event loop
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    try:
+        bot = Bot()
+        loop.run_until_complete(bot.run())
+    except KeyboardInterrupt:
+        pass
+    finally:
+        loop.close() 
