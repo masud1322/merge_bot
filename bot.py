@@ -57,6 +57,35 @@ Available Commands:
         return (user_id == Config.OWNER_ID or 
                 user_id in Config.AUTHORIZED_CHATS)
     
+    async def restart(self, update, context):
+        """Restart the bot"""
+        if not self.is_authorized(update):
+            return
+        
+        await update.message.reply_text("Restarting bot...")
+        
+        # Cleanup
+        try:
+            # Clear downloads directory
+            for file in os.listdir(Config.DOWNLOAD_DIR):
+                file_path = os.path.join(Config.DOWNLOAD_DIR, file)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                except Exception as e:
+                    logger.error(f"Error deleting {file_path}: {e}")
+                
+            # Clear user files dictionary
+            self.merge_handler.user_files.clear()
+            
+            # Reconnect to Drive API
+            self.drive_handler.connect()
+            
+            await update.message.reply_text("Bot restarted successfully!")
+            
+        except Exception as e:
+            await update.message.reply_text(f"Error during restart: {str(e)}")
+    
     async def run_web_server(self):
         """Run web server"""
         app = web.Application()
