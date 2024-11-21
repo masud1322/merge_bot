@@ -155,15 +155,19 @@ Available Commands:
             
             # Start bot
             await self.application.initialize()
-            await self.application.start()
             logger.info("Bot started")
             
-            # Run polling once and wait for stop event
-            async with self.application:
-                await self.application.start()
-                await self.application.updater.start_polling(drop_pending_updates=True)
-                await self.stop_event.wait()  # Wait until stop event is set
-                
+            # Run polling and wait for stop event
+            while not self.stop_event.is_set():
+                try:
+                    await self.application.updater.start_polling(drop_pending_updates=True)
+                    await asyncio.sleep(1)
+                except Exception as e:
+                    if "still running" not in str(e).lower():
+                        logger.error(f"Polling error: {e}")
+                        break
+                    await asyncio.sleep(1)
+                    
         except Exception as e:
             logger.error(f"Bot error: {e}")
             self.stop_event.set()
@@ -171,8 +175,11 @@ Available Commands:
         finally:
             # Cleanup
             if self.application:
-                await self.application.stop()
-                await self.application.shutdown()
+                try:
+                    await self.application.stop()
+                    await self.application.shutdown()
+                except Exception as e:
+                    logger.error(f"Error during cleanup: {e}")
             
     async def run(self):
         """Run both web server and telegram bot"""
