@@ -57,13 +57,21 @@ Available Commands:
         return (user_id == Config.OWNER_ID or 
                 user_id in Config.AUTHORIZED_CHATS)
     
-    async def start_services(self):
-        """Start both web server and telegram bot"""
-        # Create web app for health check
+    async def run_web_server(self):
+        """Run web server"""
         app = web.Application()
         app.router.add_get('/', self.health_check)
         
-        # Create telegram bot application
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
+        await site.start()
+        
+        logger.info("Web server started")
+        return runner
+        
+    async def run_bot(self):
+        """Run telegram bot"""
         application = Application.builder().token(Config.BOT_TOKEN).build()
         
         # Add handlers
@@ -89,64 +97,27 @@ Available Commands:
             self.merge_handler.handle_token_pickle
         ))
         
-        # Start bot
         create_directories()
         
-        # Start web server
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', Config.PORT)
-        await site.start()
-        
-        logger.info("Web server started")
-        
-        # Initialize bot
         await application.initialize()
         await application.start()
         logger.info("Bot started")
         
         try:
-            # Run the bot forever
-            await application.run_polling(
-                allowed_updates=Update.ALL_TYPES,
-                drop_pending_updates=True,
-                close_loop=False
-            )
-        except Exception as e:
-            logger.error(f"Error in bot: {e}")
+            await application.run_polling(allowed_updates=Update.ALL_TYPES)
         finally:
-            # Cleanup
-            await runner.cleanup()
             await application.stop()
-            await application.shutdown()
-
-    async def restart(self, update, context):
-        if not self.is_authorized(update):
-            return
-        
-        await update.message.reply_text("Restarting bot...")
-        
-        # Cleanup
+            
+    async def start_services(self):
+        """Start all services"""
         try:
-            # Clear downloads directory
-            for file in os.listdir(Config.DOWNLOAD_DIR):
-                file_path = os.path.join(Config.DOWNLOAD_DIR, file)
-                try:
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                except Exception as e:
-                    print(f"Error deleting {file_path}: {e}")
-                
-            # Clear user files dictionary
-            self.merge_handler.user_files.clear()
-            
-            # Reconnect to Drive API
-            self.drive_handler.connect()
-            
-            await update.message.reply_text("Bot restarted successfully!")
-            
+            runner = await self.run_web_server()
+            try:
+                await self.run_bot()
+            finally:
+                await runner.cleanup()
         except Exception as e:
-            await update.message.reply_text(f"Error during restart: {str(e)}")
+            logger.error(f"Error in services: {e}")
 
 def run_bot():
     """Run the bot"""
@@ -156,10 +127,7 @@ def run_bot():
     bot = Bot()
     
     # Run the bot
-    try:
-        asyncio.run(bot.start_services())
-    except KeyboardInterrupt:
-        pass
+    asyncio.run(bot.start_services())
 
 if __name__ == '__main__':
     run_bot() 
